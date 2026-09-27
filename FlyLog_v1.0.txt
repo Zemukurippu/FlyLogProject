@@ -1,0 +1,151 @@
+FlyLog1.0 — 公式仕様書（統合版）
+FlyLog Specification Document — Version 1.0 Unified Edition  
+© 2026 FlyLog Development Committee
+
+1. 概要（Overview）
+FlyLog1.0（統合版）は、ソフトウェア開発におけるバージョン履歴・分岐構造・外部リンク・Legacy 管理を
+簡潔かつ視覚的に記述するための軽量ログ言語である。
+
+本仕様は従来の FryLog1.0 を拡張し、以下の機能を正式採用する：
+
+1行1タグ方式
+
+分岐（@b）の正式仕様化
+
+None グループの正式採用
+
+構文チェック項目の強化
+
+AST（抽象構文木）仕様の明確化
+
+2. 言語宣言（必須）
+コード
+/lang = FlyLog1.0
+Reader はこの行を最初に検証し、
+対応していないバージョンの場合は読み込みを拒否する。
+
+3. 基本構造（Structure）
+コード
+/lang = FlyLog1.0
+/log
+
+/groupstart
+#Groupname = (ProjectName)
+#mainversion = (1.0)
+
+… version blocks …
+
+/endgroup
+/logend
+
+4. グループ構造（Group Structure）
+4.1 /groupstart ～ /endgroup
+1つの製品・プロジェクトのバージョン群を表す。
+
+4.2 #Groupname（必須）
+コード
+#Groupname = (RayQuake)
+4.3 #mainversion（必須）
+コード
+#mainversion = (1.0)
+特殊値：None
+コード
+#mainversion = (None)
+Legacy や特殊バージョンを置く領域
+
+Main Line には表示されない
+
+Legacy Line にのみ表示される
+
+5. Version ブロック（Version Block）
+コード
+-version = (v1.0 alpha1)
+-time{UTC+9} = (2026/08/02)
+@wlnk(https://example.com)
+@s
+5.1 -version（必須）
+新しいバージョンオブジェクトの開始。
+
+5.2 -time（任意）
+コード
+-time{UTC+9} = (2026/08/02)
+6. タグ仕様（Tags）
+6.1 @s（後継）
+コード
+@s
+6.2 @b（分岐） — 統合版で正式採用
+コード
+@b
+分岐モデル（正式仕様）
+コード
+A
+ ├─ B（ルート）
+ └─ C（分岐）
+6.3 @Lgc（Legacy）
+コード
+@Lgc
+6.4 @wlnk（外部リンク）
+コード
+@wlnk(https://example.com)
+7. AST（抽象構文木）仕様
+json
+{
+  "groupName": "test",
+  "main": {
+    "1.0": [
+      {
+        "version": "v1.0 alpha1",
+        "time": { "timezone": "+9", "date": "2026/08/02" },
+        "wlnkUrl": "https://example.com",
+        "successor": true,
+        "branch": false,
+        "isLegacy": false
+      }
+    ]
+  },
+  "legacy": [
+    {
+      "version": "Legacy1",
+      "isLegacy": true
+    }
+  ]
+}
+
+8. 構文チェック（Validation Rules）
+✔ /lang が リーダーのサポートバージョン であること
+✔ /log と /logend が存在する
+✔ /groupstart と /endgroup が正しい位置
+✔ #Groupname が存在する
+✔ #mainversion が存在する
+✔ version の形式が正しい
+✔ time の形式が正しい
+✔ タグが 1行1つ
+✔ wlnk の URL が正しい
+✔ None グループが正しく扱われている
+9. FryLog1.0（統合版）と旧 1.0 の違い
+
+機能　　　　　　旧 FryLog1.0　FryLog1.0（統合版）
+1行1タグ方式　　非公式　　　　　正式採用
+分岐（@b）　　　暫定　　　　　　正式採用
+None グループ　暫定　　　　　　正式採用
+構文チェック　　簡易　　　　　　強化
+AST　　　　　　仕様不完全　　　正式化
+wlnk　　　　　あり　　　　　　　あり
+
+
+10. 付録：最小構文テンプレート
+コード
+/lang = FlyLog1.0
+/log
+
+/groupstart
+#Groupname = (ProjectName)
+
+#mainversion = (1.0)
+-version = (v1.0 alpha1)
+-time{UTC+9} = (2026/01/01)
+@wlnk(https://example.com)
+@s
+
+/endgroup
+/logend

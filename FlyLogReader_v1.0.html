@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>FlyLog Reader v1.0</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h2>FlyLog (.flyl) を読み込む</h2>
+<input type="file" id="fileInput" accept=".flyl">
+
+<!-- 成功時は非表示、失敗時のみ表示 -->
+<div id="langStatus" style="margin:10px 0; font-weight:bold; color:#b00020;"></div>
+
+<div id="scrollArea">
+
+  <div class="section-title">Legacy Line</div>
+  <div id="legacyLine" class="line-container"></div>
+
+  <div class="section-title">Main Line</div>
+  <div id="mainContainer"></div>
+
+</div>
+
+<script>
+// 読み込み可能な FlyLog バージョン
+const SUPPORTED_LANG = "FlyLog1.0";
+
+// 色判定（タグは @Lgc 以外無視）
+function getVersionColor(version, vObj) {
+  // 明示的 stable
+  if (/stable/i.test(version)) return "#7ED321";
+
+  // alpha / beta
+  if (/alpha/i.test(version)) return "#4A90E2";
+  if (/beta/i.test(version)) return "#F5A623";
+
+  // Legacy (@Lgc)
+  if (vObj.isLegacy) return "#888";
+
+  // それ以外は自動的に stable として扱う
+  return "#7ED321";
+}
+
+// /lang 判定（FlyLog1.0 のみ許可）
+function checkLang(text) {
+  const firstLine = text.split("\n").find(line => line.trim().startsWith("/lang"));
+  if (!firstLine) return false;
+
+  const match = firstLine.match(/\/lang\s*=\s*(.+)/);
+  if (!match) return false;
+
+  let fileLang = match[1].trim();
+
+  // もし FlyLog1.1 と書かれていても内部的には 1.0 として扱う
+  if (fileLang === "FlyLog1.1") fileLang = "FlyLog1.0";
+
+  return fileLang === SUPPORTED_LANG;
+}
+
+// FlyLog パーサ（1行1タグ対応）
+function parseFlyLog(text) {
+  const lines = text.split("\n");
+
+  let groupName = "";
+  let currentMainVersion = null;
+
+  const legacy = [];
+  const groups = {};
+
+  let currentGroupList = null;
+  let currentVersionObj = null;
+
+  lines.forEach(line => {
+    line = line.trim();
+    if (!line) return;
+
+    // Groupname
+    if (line.startsWith("#Groupname")) {
+      const m = line.match(/\((.*?)\)/);
+      if (m) groupName = m[1];
+      return;
+    }
+
+    // mainversion
+    if (line.startsWith("#mainversion")) {
+      const m = line.match(/\((.*?)\)/);
+      if (!m) return;
+      currentMainVersion = m[1];
+
+      if (currentMainVersion !== "None") {
+        if (!groups[currentMainVersion]) groups[currentMainVersion] = [];
+        currentGroupList = groups[currentMainVersion];
+      } else {
+        currentGroupList = null;
+      }
+      return;
+    }
+
+    // version 行
+    if (line.startsWith("-version")) {
+      // 前の versionObj を保存
+      if (currentVersionObj) {
+        if (currentVersionObj.isLegacy || currentMainVersion === "None") {
+          legacy.push(currentVersionObj);
+        } else if (currentGroupList) {
+          currentGroupList.push(currentVersionObj);
+        }
+      }
+
+      const m = line.match(/\((.*?)\)/);
+      if (!m) return;
+      const version = m[1];
+
+      currentVersionObj = {
+        version,
+        wlnkUrl: null,
+        isLegacy: false
+      };
+      return;
+    }
+
+    // Legacy
+    if (line.startsWith("@Lgc")) {
+      if (currentVersionObj) currentVersionObj.isLegacy = true;
+      return;
+    }
+
+    // wlnk（リンクは色判定には使わない）
+    if (line.startsWith("@wlnk")) {
+      if (!currentVersionObj) return;
+      const m = line.match(/@wlnk\(([^)]*)\)/);
+      if (m) currentVersionObj.wlnkUrl = m[1];
+      return;
+    }
+
+    // @s, @b は Reader v1.0 では無視（保持もしない）
+  });
+
+  // 最後の versionObj を保存
+  if (currentVersionObj) {
+    if (currentVersionObj.isLegacy || currentMainVersion === "None") {
+      legacy.push(currentVersionObj);
+    } else if (currentGroupList) {
+      currentGroupList.push(currentVersionObj);
+    }
+  }
+
+  return { groupName, legacy, groups };
+}
+
+// 横向きライン表示
+function renderLine(list, container) {
+  container.innerHTML = "";
+
+  list.forEach((vObj, index) => {
+    const node = document.createElement("div");
+    node.className = "node";
+    node.style.backgroundColor = getVersionColor(vObj.version, vObj);
+    node.textContent = vObj.version;
+
+    // リンク付き（色判定には影響しない）
+    if (vObj.wlnkUrl) {
+      node.classList.add("link");
+      node.textContent += " 🔗";
+      node.addEventListener("click", () => {
+        window.open(vObj.wlnkUrl, "_blank");
+      });
+    }
+
+    container.appendChild(node);
+
+    if (index < list.length - 1) {
+      const arrow = document.createElement("div");
+      arrow.className = "arrow";
+      arrow.textContent = "▶";
+      container.appendChild(arrow);
+    }
+  });
+}
+
+// ファイル読み込み
+document.getElementById("fileInput").addEventListener("change", function() {
+  const file = this.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+
+    // /lang 判定
+    const langOK = checkLang(text);
+    const langStatus = document.getElementById("langStatus");
+
+    if (!langOK) {
+      langStatus.textContent =
+        "読み取りに失敗しました。ファイルが壊れているか、対応していないバージョン、あるいは、不正な形式のFlyLog記述の可能性があります。";
+      return;
+    } else {
+      langStatus.textContent = ""; // 成功時は非表示
+    }
+
+    const { groupName, legacy, groups } = parseFlyLog(text);
+
+    // Legacy 表示
+    renderLine(legacy, document.getElementById("legacyLine"));
+
+    // Main Line
+    const mainContainer = document.getElementById("mainContainer");
+    mainContainer.innerHTML = "";
+
+    Object.keys(groups).forEach(mainVer => {
+      if (mainVer === "None") return;
+
+      const displayName = `${groupName} v${mainVer}`;
+
+      const title = document.createElement("div");
+      title.className = "fold-title";
+      title.textContent = `▸ ${displayName}`;
+
+      const content = document.createElement("div");
+      content.className = "fold-content";
+
+      const line = document.createElement("div");
+      line.className = "line-container";
+      renderLine(groups[mainVer], line);
+
+      content.appendChild(line);
+
+      title.addEventListener("click", () => {
+        const isOpen = content.style.display === "block";
+        content.style.display = isOpen ? "none" : "block";
+        title.textContent = (isOpen ? "▸" : "▾") + " " + displayName;
+      });
+
+      mainContainer.appendChild(title);
+      mainContainer.appendChild(content);
+    });
+  };
+
+  reader.readAsText(file);
+});
+</script>
+
+</body>
+</html>
